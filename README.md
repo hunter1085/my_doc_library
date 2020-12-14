@@ -1,7 +1,7 @@
 # sed 中文手册
 ---
 ## 目录
-1. [简介]()
+1. [简介](https://github.com/hunter1085/sed-chinese-manual/blob/main/doc/introduction.md)
 2. [实际跑跑看]()  
 2.1 [概述]()  
 2.2 [CLI 选项]()  
