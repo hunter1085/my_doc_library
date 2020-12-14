@@ -2,7 +2,7 @@
 ---
 ## 目录
 1. [简介](https://github.com/hunter1085/sed-chinese-manual/blob/main/doc/1.%20introduction.md)
-2. [实际跑跑看]()  
+2. [实际跑跑看](https://github.com/hunter1085/sed-chinese-manual/blob/main/doc/2.%20running_sed.md)  
 2.1 [概述]()  
 2.2 [CLI 选项]()  
 2.3 [退出状态]()  
