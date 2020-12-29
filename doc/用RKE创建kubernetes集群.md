@@ -369,3 +369,32 @@ TO DO:
 ## 扩展节点  
 
 ## 更新证书
+
+## 常见问题
+
+1. 启动多节点集群，发现某一个(多个)节点启动失败，RKE终端日志如下：  
+WARN[0018] Can't start Docker container [rke-worker-port-listener] on host [16.187.191.114]: Error response from daemon: driver failed programming external connectivity on endpoint rke-worker-port-listener (b3cfec0c0e0143ffbf8fcbfd4ebd6d5b68458215584479d94cfb7d7f7df8dab2):  (iptables failed: iptables --wait -t nat -A DOCKER -p tcp -d 0/0 --dport 10250 -j DNAT --to-destination 172.17.0.2:1337 ! -i docker0: iptables: No chain/target/match by that name.
+ (exit status 1))  
+ 原因: 登录到失败节点，运行"docker ps -a", 会发现有些container 状态为 Created，如下所示：  
+ ```
+ #docker ps -a
+CONTAINER ID        IMAGE                       COMMAND                  CREATED             STATUS                     PORTS               NAMES
+9cbb50f4866d        rancher/rke-tools:v0.1.67   "/docker-entrypoint.…"   2 minutes ago       Created                                        rke-worker-port-listener
+c5017a694b54        rancher/rke-tools:v0.1.67   "/docker-entrypoint.…"   3 minutes ago       Exited (0) 2 minutes ago                       cluster-state-deployer
+ ```
+说明container被创建了，但是没来得及运行，这种问题一般是docker出现了异常，重启docker就可以了：  
+`sudo systemctl resart docker`
+
+2. 启动集群的时候，某个节点kubelet起不来，RKE终端日志如下：  
+ERRO[0110] Failed to upgrade hosts: 16.187.191.58 with error [Failed to verify healthcheck: Failed to check http://localhost:10248/healthz for service [kubelet] on host [16.187.191.58]: Get "http://localhost:10248/healthz": Unable to access the service on localhost:10248. The service might be still starting up. Error: ssh: rejected: connect failed (Connection refused), log: + umount /var/lib/docker/devicemapper/mnt/68ff7c2f1246d1b0cce5ceb85696eab7b00f768a54c4f6e9696c2a5c1c6b65fb/rootfs/var/lib/kubelet/pods/09bf295d-0517-43b7-af04-8a578cdcc657/volume-subpaths/itsma-bmant-smartanalytics-volume/smarta-sawmeta-dih/0]  
+FATA[0110] [workerPlane] Failed to upgrade Worker Plane: [Failed to verify healthcheck: Failed to check http://localhost:10248/healthz for service [kubelet] on host [16.187.191.58]: Get "http://localhost:10248/healthz": Unable to access the service on localhost:10248. The service might be still starting up. Error: ssh: rejected: connect failed (Connection refused), log: + umount /var/lib/docker/devicemapper/mnt/68ff7c2f1246d1b0cce5ceb85696eab7b00f768a54c4f6e9696c2a5c1c6b65fb/rootfs/var/lib/kubelet/pods/09bf295d-0517-43b7-af04-8a578cdcc657/volume-subpaths/itsma-bmant-smartanalytics-volume/smarta-sawmeta-dih/0]  
+登录到失败的机器，运行"docker ps | grep kubelet"，如下：  
+```
+#docker ps | grep kubelet
+1f697eb6a724        rancher/hyperkube:v1.19.5-rancher1     "/opt/rke-tools/entr…"   12 minutes ago      Up 12 minutes                           kubelet
+```
+然后，查看容器日志，运行: "docker logs -f 1f697eb6a724"  
+日志很长一串，其中错误日志中可能有误导性，比如，kubelet报cni 网络插件找不到之类的(TO DO： add the log)  
+但其实原因可能是因为docker运行时还运行着很多container(包括已经退出的container)，以及/var/lib/kubelet目录下被container引用的文件引起的冲突。解决的办法就是把这些所有container清干净，然后重启系统。
+
+
