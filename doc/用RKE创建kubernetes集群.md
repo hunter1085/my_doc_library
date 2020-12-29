@@ -2,8 +2,14 @@
 
 ## 简介  
 RKE
-众所周知，原生搭建一个kubernetes集群是一个难度较大，门槛较高，周期较长的一件事情。为了降低难度，RKE 是[Rancher](https://rancher.com/) 公司推出了一系列相关产品，今天介绍的[RKE](https://rancher.com/products/rke/)就是其中的一个比较有特色的产品之一。  
-RKE有点像kubeadm，基本上一条命令就可以搭建一个完整的kubernetes集群。它的特点之一是：用容器化的方式运行所有k8s组件(apiserver,scheduler,controller等)，包括ETCD。所以，运行RKE的前置条件就是必须有docker([环境准备](#preqequisit))。  
+众所周知，原生搭建一个kubernetes集群是一个难度较大，门槛较高，周期较长的一件事情。为了降低难度，[Rancher](https://rancher.com/) 公司推出了一系列相关产品，今天介绍的[RKE](https://rancher.com/products/rke/)就是其中的一个比较有特色的产品之一。  
+RKE有点像kubeadm，基本上一条命令就可以搭建一个完整的kubernetes集群。它的特点之一是：用容器化的方式运行所有k8s组件(apiserver,scheduler,controller等)，包括ETCD。所以，运行RKE的前置条件就是必须有docker([环境准备](#preqequisit))。另外一个前置条件是按照节点必须能免密登录集群所有节点，所以  
+它的另外一个优点是使用非常简单，比如，集群的所有配置都被集中定义在一个yml文件(默认是cluster.yml)中，这样用户可以非常方便，直观的定义和了解集群的配置信息。相比于那些把配置信息分散到系统各个位置的管理方式，我觉得RKE的配置集中管理方式更人性化。类似的，安装后，集群的状态信息也会被集中记录到一个yml文件(默认是cluster.rkestate)中，有了这个文件，集群的扩容、缩容、升级甚至灾备都能做到有的放矢。又比如，RKE提供的命令行工具本身，使用起来也是超级简单，比如：    
+ - 建立集群: rke up
+ - 销毁集群: rke remove
+ - 生成证书CSR：rke cert
+ - 生成集群配置： rke config
+ - ...
 虽然，RKE极大的降低了搭建k8s集群的难度，但这并不意味着RKE仅仅是一种“玩具”。它的稳定性和灵活性还是值得信赖的，因此官方也是对它不吝赞美之词：  
   - CNCF(Cloud Native Computing Foundation)认证：意味着和原生的kubernetes API兼容，这就保证了RKE集群和k8s原生集群之间的可移植性；  
   - 一键安装：安装确实变得很容易；  
@@ -30,10 +36,10 @@ RKE有点像kubeadm，基本上一条命令就可以搭建一个完整的kuberne
   * controlplane  
   * etcd  
   * worker  
-controleplane这个角色对应的就是master节点，etcd可以放在master节点也可以和master节点隔离，worker就是负载节点，其实这3个角色可以任意组合。这里为了清晰，也为了方便起见，将controlplane和etcd整合在一起，和worker隔离开。  
+controleplane这个角色对应的就是master节点，etcd可以放在master节点也可以和master节点隔离，worker就是负载节点，但其实这3个角色可以任意组合。这里为了清晰，也为了方便起见，将controlplane和etcd整合在一起，和worker隔离开。  
 另外，需要注意的是，虽然这里选择CentOS作为节点的底层操作系统，但事实上RKE可以支持很多Linux操作系统，比如，它的很多测试都是在Ubuntu上进行的。
 
-言归正传，上面我们规划的集群，可以用下面的yaml配置来描述：  
+言归正传，上面我们规划的集群，可以用下面的yaml配置来描述，并保存为cluster.yml：  
 ```
 nodes:
     - address: 16.187.190.1
@@ -48,9 +54,7 @@ nodes:
         - worker
       ssh_key_path: ~/.ssh/id_rsa
 ```
-默认情况下，RKE会在当前工作目录下搜索名为cluster.yml的文件作为集群的配置文件，所以，我们把上述的配置保存在当前目录下，名为cluster.yml。当然，也可以在运行RKE的时候，通过--config 指定集群配置文件。  
-当然，我们还可以运行RKE config，通过和RKE交互，最终生成cluster.yml。  
-集群还有很多配置，可以参考:[配置集群](#cluster_config)  
+关于集群配置文件，这里多说两句。当我们运行"rke up"来建立集群的时候，rke会在当前工作目录下搜索名为cluster.yml的文件作为集群的配置文件，如果找不到就会报错，当然用户还可以通过"--config" 来指定集群配置文件。另外，用户可以用手动编辑的方式生成集群配置文件，也可以运行RKE config，通过和RKE交互，最终生成集群配置文件。RKE定义了很多集群的配置项，具体可以参考:[集群配置](#cluster_config)  
 ### 集群节点准备  
   1. 创建非root用户  
      这个并不是RKE的要求，而是SSH的要求: Red Hat Enterprise Linux/Oracle Linux/CentOS 用户不可以使用root作为ssh 用户，见[Bugzilla 1527565](https://bugzilla.redhat.com/show_bug.cgi?id=1527565)。根据[集群规划](#cluster_design)节中的设计，我们需要:  
@@ -366,7 +370,31 @@ addons_include:
 可以看到，集群的配置项还是很多的，以下挑一些常用的解释一下：  
 TO DO:  
 
-## 扩展节点  
+## 集群伸缩  
+### 扩容/缩容
+使用rke来增加和删除节点是再简单不过的事了：用户只需要重新编辑集群配置文件(cluster.yml)，如果要扩容，那么就新node段新增节点信息；如果要缩容，那么只要删除节点信息；甚至，集群伸缩的过程中，节点的角色都能修改，比如原来Node-1的角色是controlplane+etcd，扩容后，希望Node-1同时也是worker，那么只要把Node-1增加worker角色；当然，最后还得运行"rke up"，这样整个集群的规模就自动伸缩成和你定义的一样了。  
+另外，rke为增加/删除worker节点，单独定义了一个参数——"--update-only"。使用这个参数后，cluster.yml中和worker节点不相干的配置都会被忽略。  
+
+### 销毁集群
+运行"rke remove"来销毁整个集群，注意，一旦运行该命令，集群将被彻底销毁，并且etcd在本地和AWS(S3)上的数据备份都将被销毁。"rke remove" 还将删除cluster.yml中定义的所有节点的以下组件：
+- etcd  
+- kube-apiserver  
+- kube-controller-manager  
+- kubelet  
+- kube-proxy  
+- nginx-proxy  
+同时它还将清除节点的以下目录:
+- /etc/kubernetes/ssl  
+- /var/lib/etcd  
+- /etc/cni  
+- /opt/cni  
+- /var/run/calico  
+
+**特别注意：**  
+如果希望节点能重用，需要清理目录/var/kubelet/ 下的历史残留文件，否则有可能导致以下莫名其妙的问题。而该目录下的文件有可能又被残留的容器(正在运行或已经退出的)应用，所以正确的清除/var/kubelet的步骤为：  
+1. 删除所有容器  
+2. 重启机器  
+3. 删除/var/kubelet/下所有文件和目录  
 
 ## 更新证书
 
