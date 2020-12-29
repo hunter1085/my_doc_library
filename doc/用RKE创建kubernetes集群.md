@@ -1,114 +1,84 @@
 # 用RKE搭建kubernetes集群
 
-## 简介  
-RKE
+## RKE简介  
+
 众所周知，原生搭建一个kubernetes集群是一个难度较大，门槛较高，周期较长的一件事情。为了降低难度，[Rancher](https://rancher.com/) 公司推出了一系列相关产品，今天介绍的[RKE](https://rancher.com/products/rke/)就是其中的一个比较有特色的产品之一。  
-RKE有点像kubeadm，基本上一条命令就可以搭建一个完整的kubernetes集群。它的特点之一是：用容器化的方式运行所有k8s组件(apiserver,scheduler,controller等)，包括ETCD。所以，运行RKE的前置条件就是必须有docker([环境准备](#preqequisit))。另外一个前置条件是按照节点必须能免密登录集群所有节点，所以  
-它的另外一个优点是使用非常简单，比如，集群的所有配置都被集中定义在一个yml文件(默认是cluster.yml)中，这样用户可以非常方便，直观的定义和了解集群的配置信息。相比于那些把配置信息分散到系统各个位置的管理方式，我觉得RKE的配置集中管理方式更人性化。类似的，安装后，集群的状态信息也会被集中记录到一个yml文件(默认是cluster.rkestate)中，有了这个文件，集群的扩容、缩容、升级甚至灾备都能做到有的放矢。又比如，RKE提供的命令行工具本身，使用起来也是超级简单，比如：    
+RKE有点像kubeadm，基本上一条命令就可以搭建一个完整的kubernetes集群。它的特点之一是：用容器化的方式运行所有K8S组件(apiserver,scheduler,controller等)，包括ETCD。所以，运行RKE的前置条件就是必须有docker([环境准备](#preqequisit))。另外一个前置条件是安装节点必须能免密登录集群所有节点。  
+它的另外一个优点是使用非常简单。比如，集群的所有配置都被集中定义在一个yml文件(默认是cluster.yml)中，这样用户可以非常方便，直观的定义和了解集群的配置信息。相比于那些把配置信息分散到系统各个位置的管理方式，我觉得RKE的配置集中管理方式更人性化。类似的，安装后的集群状态信息也会被集中记录到一个json文件(默认是cluster.rkestate)中，有了这个文件，集群的扩容、缩容、升级甚至灾备都能做到定位精准，有的放矢。又比如，RKE提供的命令行工具本身，使用起来也是超级简单，简单列举如下：    
  - 建立集群: rke up
  - 销毁集群: rke remove
  - 生成证书CSR：rke cert
  - 生成集群配置： rke config
- - ...
-虽然，RKE极大的降低了搭建k8s集群的难度，但这并不意味着RKE仅仅是一种“玩具”。它的稳定性和灵活性还是值得信赖的，因此官方也是对它不吝赞美之词：  
-  - CNCF(Cloud Native Computing Foundation)认证：意味着和原生的kubernetes API兼容，这就保证了RKE集群和k8s原生集群之间的可移植性；  
-  - 一键安装：安装确实变得很容易；  
-  - 包容并济：REK可以兼容各种OS，各种k8s平台甚至各种工具等  
+ - ...  
+虽然，RKE极大的降低了搭建K8S集群的难度，但这并不意味着RKE仅仅是一种“玩具”。它的稳定性和灵活性还是值得信赖的，因此官方也是对它不吝赞美之词：  
+  - CNCF(Cloud Native Computing Foundation)认证：CNCF意味着RKE建立的集群和原生安装的kubernetes集群API是兼容的，这就保证了RKE集群和K8S原生集群之间的可移植性；  
+  - 一键操作：扩容/缩容/安装/升级/灾备/恢复，基本上一条命令搞定一个个大事件，确实比较简单；  
+  - 包容并济：REK可以兼容各种OS，各种K8S平台甚至各种工具等  
   - 7x24小时企业级支持  
   - 安全的、原子性的升级  
 下面我们具体介绍一下怎么用RKE一步一步搭建k8s集群。  
 
+## 快速入门  
 <span id="preqequisit"></span>
 ## 环境准备  
-<span id="cluster_design"></span>
-### 集群规划  
-- Node-1:  
-  - IP: 16.187.190.1  
-  - OS: CentOS  
-  - Role: controlplane,etcd  
-  - User Account: rke-user  
-- Node-2:  
-  - IP: 16.187.190.2  
-  - OS: CentOS  
-  - Role: worker  
-  - User Account: rke-user  
-这里只规划了一个比较简单的集群：2个节点，其中一个节点是master节点，一个是work节点。RKE定义了3种Role：  
-  * controlplane  
-  * etcd  
-  * worker  
-controleplane这个角色对应的就是master节点，etcd可以放在master节点也可以和master节点隔离，worker就是负载节点，但其实这3个角色可以任意组合。这里为了清晰，也为了方便起见，将controlplane和etcd整合在一起，和worker隔离开。  
-另外，需要注意的是，虽然这里选择CentOS作为节点的底层操作系统，但事实上RKE可以支持很多Linux操作系统，比如，它的很多测试都是在Ubuntu上进行的。
-
-言归正传，上面我们规划的集群，可以用下面的yaml配置来描述，并保存为cluster.yml：  
-```
-nodes:
-    - address: 16.187.190.1
-      user: rke-user
-      role:
-        - controlplane
-        - etcd
-      ssh_key_path: ~/.ssh/id_rsa
-    - address: 16.187.190.2
-      user: rke-user
-      role:
-        - worker
-      ssh_key_path: ~/.ssh/id_rsa
-```
-关于集群配置文件，这里多说两句。当我们运行"rke up"来建立集群的时候，rke会在当前工作目录下搜索名为cluster.yml的文件作为集群的配置文件，如果找不到就会报错，当然用户还可以通过"--config" 来指定集群配置文件。另外，用户可以用手动编辑的方式生成集群配置文件，也可以运行RKE config，通过和RKE交互，最终生成集群配置文件。RKE定义了很多集群的配置项，具体可以参考:[集群配置](#cluster_config)  
-### 集群节点准备  
-  1. 创建非root用户  
-     这个并不是RKE的要求，而是SSH的要求: Red Hat Enterprise Linux/Oracle Linux/CentOS 用户不可以使用root作为ssh 用户，见[Bugzilla 1527565](https://bugzilla.redhat.com/show_bug.cgi?id=1527565)。根据[集群规划](#cluster_design)节中的设计，我们需要:  
-     - 新建rke-user用户，并把它加入到"docker"用户组：  
+1. 准备一台机器(虚拟机或裸金属服务器)，假设:  
+- IP: 192.168.1.1  
+- OS: CentOS  
+2. 创建非root用户(这里用户名定义为rke)，并把它进入到docker用户组中：  
      ```
-     #create "docker" group and create a new user named "rke-user", add "rke-user" into "docker" group
+     #create "docker" group and create a new user named "rke", add it into "docker" group
      groupadd docker
-     useradd rke-user
+     useradd rke
      usermod -aG docker rke
      passwd rke
      ```
-     - 将rke-user加入到sudoers中：在/etc/sudoers文件中，增加"rke   ALL=(ALL)       ALL"  
-     ```
-     cat /etc/sudoers
-     ......
-     ## Allow root to run any commands anywhere
-      root    ALL=(ALL)       ALL
-      admin   ALL=(ALL)       ALL
-      rke   ALL=(ALL)       ALL
-     ......
-     ```
-     - 用rke-user重新登录Node-1和Node-2  
-  2. ssh server端配置:  
-    - 打开/etc/ssh/sshd_config, 将AllowTcpForwarding的值设置成 yes  
-    ```
-    #AllowAgentForwarding yes
-    AllowTcpForwarding yes
-    #GatewayPorts no
-    X11Forwarding yes
-    ```
-  3. 防火墙配置:  
-     - 有很多端口需要配置，简单起见可以直接把firewalld关闭:  
-     `sudo systemctl stop firewalld`  
-     - 也可以根据下标一个一个设置iptable规则:  
-       [端口定义](https://rancher.com/docs/rke/latest/en/os/)  
+3. 将rke加入sudoer中
+4. 配置ssh server端，允许TCP转发: 编辑 /etc/ssh/sshd_config，将AllowTcpForwardin设置为"yes"
+5. 设置ssh免密登录：
+```
+$ssh-keygen -t rsa
+Generating public/private rsa key pair.
+Enter file in which to save the key (/root/.ssh/id_rsa):
+Enter passphrase (empty for no passphrase):
+Enter same passphrase again:
+Your identification has been saved in /root/.ssh/id_rsa.
+Your public key has been saved in /root/.ssh/id_rsa.pub.
+The key fingerprint is:
+SHA256:M3jHo+f+jiy9HxSL6yrPbfowY/LeSx7hj71hgq0zGq8 root@SGDLITVM0351.hpeswlab.net
+The key's randomart image is:
++---[RSA 2048]----+
+|                 |
+|                 |
+|            .    |
+|       . . . o   |
+|      . S * o    |
+|       . O =     |
+|      o B.O +    |
+|      .B+#oO o   |
+|      E*XX#*B.   |
++----[SHA256]-----+
 
-<span id="ssh_config"></span>
-### ssh免密登录设置  
-RKE要求能通过ssh免密登录到其他节点，因此ssh免密登录也是前置条件之一。假设Node-1是RKE工作节点，我们需要：  
-1. 在每台节点上创建ssh公私钥对:  
-`ssh-keygen -t rsa`
-2. 把每台节点的公钥复制到Node-1：  
-`ssh-copy-id -i ~/.ssh/id_rsa.pub rke-user@16.187.190.1`
-### 安装docker  
-首先，RKE并不是支持所有的docker/kubernetes版本，具体支持哪些版本，请参考[release note](https://rancher.com/support-maintenance-terms)  
-有2种方式安装docker:
-- docker的官方教程，[下载docker](https://docs.docker.com/engine/install/centos/)  
-- RKE提供的脚本，比如：
-  - 18.09.2 : curl https://releases.rancher.com/install-docker/18.09.2.sh | sh
-  - 18.06.2 : curl https://releases.rancher.com/install-docker/18.06.2.sh | sh
-  - 17.03.2 : curl https://releases.rancher.com/install-docker/17.03.2.sh | sh
-
-## 创建集群
-万事俱备只欠东风，我们现在只需要下载[RKE可执行文件](https://github.com/rancher/rke/releases)，将可执行文件重命名为rke，并放到PATH可以搜索到的任何目录下，比如，/usr/bin目录。然后运行：rke up，然后就可以看到一行行日志打印出来: 
+$ssh-copy-id -i ~/.ssh/id_rsa.pub rke@192.168.1.1 
+```
+6. 安装docker，两种方式：
+  - docker的官方教程，[下载docker](https://docs.docker.com/engine/install/centos/)  
+  - RKE提供的脚本，比如：
+    - 18.09.2 : curl https://releases.rancher.com/install-docker/18.09.2.sh | sh
+    - 18.06.2 : curl https://releases.rancher.com/install-docker/18.06.2.sh | sh
+    - 17.03.2 : curl https://releases.rancher.com/install-docker/17.03.2.sh | sh  
+7. 关闭防火墙:  
+`systemctl stop firewalld`
+8. 手动编辑cluster.yml文件  
+```
+nodes:
+    - address: 192.168.1.1  
+      user: rke
+      role:
+        - controlplane
+        - etcd
+        - worker
+```
+9. 创建集群：  
 ```
 rke up
 
@@ -119,11 +89,93 @@ INFO[0000] [network] Pulling image [alpine:latest] on host [10.0.0.1]
 ...
 INFO[0101] Finished building Kubernetes cluster successfully
 ```
-如果你能看到"Finished building Kubernetes cluster successfully"这句日志，那么，恭喜，k8s集群创建成功了。  
-常见的错误是：
-1. rke ssh连接不到其他节点，这种情况一般是ssh免密登录没配置好，请参考[ssh免密登录](#ssh_config)
-2. rke 从 dockhub下载image失败，这种情况，你可能需要配置[docker proxy](https://docs.docker.com/config/daemon/systemd/#http-proxy)
-<span id="cluster_config"></span>
+一口气做下来，如果看到了"Finished building Kubernetes cluster successfully"，那就说明集群创建成功了。这时，可以看到，在cluster.yml同级目录下，rke又生成了2个文件:  
+- kube_config_cluster.yml  
+- cluster.rkestate  
+cluster.rkestate是集群状态信息文件，集群的后续操作都会从这个文件中提取必要信息，这里暂且不表。kube_config_cluster.yml就是rke为kubectl生成的配置文件。为了后续操作方便，建议将kube_config_cluster.yml覆盖kubectl的默认配置文件~/.kube/config： 
+`cp kube_config_cluster.yml ~/.kube/config`
+然后，就可以通过kubectl获得集群的各种信息了:  
+```
+$ kubectl get nodes
+192.168.1.1    Ready    controlplane,etcd,worker   97m   v1.19.5
+$ kubectl get pod -A
+$ kubectl get pod -A
+NAMESPACE       NAME                                       READY   STATUS      RESTARTS   AGE
+ingress-nginx   default-http-backend-65dd5949d9-wn5pm      1/1     Running     0          84m
+ingress-nginx   nginx-ingress-controller-4lx7f             1/1     Running     0          89m
+kube-system     calico-kube-controllers-7fbff695b4-bdtcp   1/1     Running     0          97m
+kube-system     canal-4g7mn                                2/2     Running     0          89m
+kube-system     coredns-6f85d5fb88-dxrbm                   1/1     Running     0          97m
+kube-system     metrics-server-8449844bf-fmxjx             1/1     Running     0          97m
+kube-system     rke-coredns-addon-deploy-job-bx7h5         0/1     Completed   0          97m
+kube-system     rke-ingress-controller-deploy-job-4xf7m    0/1     Completed   0          97m
+kube-system     rke-metrics-addon-deploy-job-xz8wq         0/1     Completed   0          97m
+kube-system     rke-network-plugin-deploy-job-rxw9s        0/1     Completed   0          97m
+```
+之前我们说过rke的特色之一就是用容器化的方式运行所有K8S组件，上面命名输出也印证了这一点, K8S的组件没有被纳入到K8S集群中统一管理，这是我个人认为美中不足的地方。我们跑一下"docker ps" 可以看到K8S组件和etcd都是由docker管理:
+```
+$ docker ps
+CONTAINER ID        IMAGE                                  COMMAND                  CREATED             STATUS              PORTS               NAMES
+ed0ed05e8aa0        rancher/rke-tools:v0.1.67              "/docker-entrypoint.…"   2 hours ago         Up 2 hours                              etcd-rolling-snapshots
+d019fc51dbd2        1f0ca6d99110                           "/usr/bin/dumb-init …"   2 hours ago         Up 2 hours                              k8s_nginx-ingress-controller_nginx-ingress-controller-r578w_ingress-nginx_de784445-7e62-47bf-85b2-ccd559d93591_0
+892fb5245147        rancher/pause:3.2                      "/pause"                 2 hours ago         Up 2 hours                              k8s_POD_nginx-ingress-controller-r578w_ingress-nginx_de784445-7e62-47bf-85b2-ccd559d93591_0
+c84d2b1fa5cd        rancher/hyperkube:v1.19.5-rancher1     "/opt/rke-tools/entr…"   2 hours ago         Up 2 hours                              kubelet
+.......
+```
+万事大吉，到此为止，我们的入门教程也差不多该告一段落了。结束之前，让我们来稍微回顾总结一下：  
+1. rke给node定义了3种角色(role)：  
+  - controlplane: 用于安装K8S组件  
+  - etcd: 用于安装etcd  
+  - worker: 负责节点，负责运行除K8S和etcd之外组件  
+  理论上，每个节点都可以是这3个角色的任意组合，但通常，我们会把集群分为master节点和worker节点以便于管理。master节点通常是controlplane和etcd的组合，而worker节点的角色就是worker。
+2. 虽然这里选择CentOS作为节点的底层操作系统，但事实上RKE可以支持很多Linux操作系统，比如，它的很多测试都是在Ubuntu上进行的。  
+3. 入门教程图省事把firewalld直接停了，这种粗暴的做法会带来很大的安全隐患，实际生产环境上一般会用iptalbe/firewall对端口流量进行精细化的控制，关于端口设定请参考[端口配置]()  
+4. 创建非root用户不是rke的要求，而是SSH的要求(Red Hat Enterprise Linux/Oracle Linux/CentOS 用户不可以使用root作为ssh 用户，见[Bugzilla 1527565](https://bugzilla.redhat.com/show_bug.cgi?id=1527565))，但ssh是rke的要求。  
+5. 集群配置可以简单到只配置一个节点信息，也可以复制到让你感到头昏眼花，更多集群配置信息参考:[集群配置](#cluster_config)。  
+6. 如果通过"--config"显示指定，集群配置文件可以不叫"cluster.yml"  
+快速入门我们创建了一个最简单、最小的一个集群，如果想了解rke更多的用法，创建更复杂的集群，请阅读[RKE进阶](#rke_advance)和[RKE高级教程]()  
+
+<span id="rke_advance"></span>
+## RKE进阶
+
+### 集群伸缩  
+#### 扩容/缩容  
+使用rke来增加和删除节点是再简单不过的事了：用户只需要重新编辑集群配置文件(cluster.yml)，如果要扩容，那么就新node段新增节点信息；如果要缩容，那么只要删除节点信息；甚至，集群伸缩的过程中，节点的角色都能修改，比如原来Node-1的角色是controlplane+etcd，扩容后，希望Node-1同时也是worker，那么只要把Node-1增加worker角色；当然，最后还得运行"rke up"，这样整个集群的规模就自动伸缩成和你定义的一样了。  
+另外，rke为增加/删除worker节点，单独定义了一个参数——"--update-only"。使用这个参数后，cluster.yml中和worker节点不相干的配置都会被忽略。  
+
+#### 销毁集群  
+运行"rke remove"来销毁整个集群，注意，一旦运行该命令，集群将被彻底销毁，并且etcd在本地和AWS(S3)上的数据备份都将被销毁。"rke remove" 还将删除cluster.yml中定义的所有节点的以下组件：
+- etcd  
+- kube-apiserver  
+- kube-controller-manager  
+- kubelet  
+- kube-proxy  
+- nginx-proxy  
+同时它还将清除节点的以下目录:
+- /etc/kubernetes/ssl  
+- /var/lib/etcd  
+- /etc/cni  
+- /opt/cni  
+- /var/run/calico  
+
+**特别注意：**  
+如果希望节点能重用，需要清理目录/var/kubelet/ 下的历史残留文件，否则有可能导致以下莫名其妙的问题。而该目录下的文件有可能又被残留的容器(正在运行或已经退出的)应用，所以正确的清除/var/kubelet的步骤为：  
+1. 删除所有容器  
+2. 重启机器  
+3. 删除/var/kubelet/下所有文件和目录  
+
+### 更新证书
+## RKE高级
+
+ 
+
+
+
+
+
+
+
+
 ## 集群配置
 集群配置最小集:
 ```
@@ -370,37 +422,12 @@ addons_include:
 可以看到，集群的配置项还是很多的，以下挑一些常用的解释一下：  
 TO DO:  
 
-## 集群伸缩  
-### 扩容/缩容
-使用rke来增加和删除节点是再简单不过的事了：用户只需要重新编辑集群配置文件(cluster.yml)，如果要扩容，那么就新node段新增节点信息；如果要缩容，那么只要删除节点信息；甚至，集群伸缩的过程中，节点的角色都能修改，比如原来Node-1的角色是controlplane+etcd，扩容后，希望Node-1同时也是worker，那么只要把Node-1增加worker角色；当然，最后还得运行"rke up"，这样整个集群的规模就自动伸缩成和你定义的一样了。  
-另外，rke为增加/删除worker节点，单独定义了一个参数——"--update-only"。使用这个参数后，cluster.yml中和worker节点不相干的配置都会被忽略。  
 
-### 销毁集群
-运行"rke remove"来销毁整个集群，注意，一旦运行该命令，集群将被彻底销毁，并且etcd在本地和AWS(S3)上的数据备份都将被销毁。"rke remove" 还将删除cluster.yml中定义的所有节点的以下组件：
-- etcd  
-- kube-apiserver  
-- kube-controller-manager  
-- kubelet  
-- kube-proxy  
-- nginx-proxy  
-同时它还将清除节点的以下目录:
-- /etc/kubernetes/ssl  
-- /var/lib/etcd  
-- /etc/cni  
-- /opt/cni  
-- /var/run/calico  
-
-**特别注意：**  
-如果希望节点能重用，需要清理目录/var/kubelet/ 下的历史残留文件，否则有可能导致以下莫名其妙的问题。而该目录下的文件有可能又被残留的容器(正在运行或已经退出的)应用，所以正确的清除/var/kubelet的步骤为：  
-1. 删除所有容器  
-2. 重启机器  
-3. 删除/var/kubelet/下所有文件和目录  
-
-## 更新证书
 
 ## 常见问题
-
-1. 启动多节点集群，发现某一个(多个)节点启动失败，RKE终端日志如下：  
+1. rke ssh连接不到其他节点，这种情况一般是ssh免密登录没配置好，请参考[ssh免密登录](#ssh_config)
+2. rke 从 dockhub下载image失败，这种情况，你可能需要配置[docker proxy](https://docs.docker.com/config/daemon/systemd/#http-proxy)
+3. 启动多节点集群，发现某一个(多个)节点启动失败，RKE终端日志如下：  
 WARN[0018] Can't start Docker container [rke-worker-port-listener] on host [16.187.191.114]: Error response from daemon: driver failed programming external connectivity on endpoint rke-worker-port-listener (b3cfec0c0e0143ffbf8fcbfd4ebd6d5b68458215584479d94cfb7d7f7df8dab2):  (iptables failed: iptables --wait -t nat -A DOCKER -p tcp -d 0/0 --dport 10250 -j DNAT --to-destination 172.17.0.2:1337 ! -i docker0: iptables: No chain/target/match by that name.
  (exit status 1))  
  原因: 登录到失败节点，运行"docker ps -a", 会发现有些container 状态为 Created，如下所示：  
@@ -413,7 +440,7 @@ c5017a694b54        rancher/rke-tools:v0.1.67   "/docker-entrypoint.…"   3 min
 说明container被创建了，但是没来得及运行，这种问题一般是docker出现了异常，重启docker就可以了：  
 `sudo systemctl resart docker`
 
-2. 启动集群的时候，某个节点kubelet起不来，RKE终端日志如下：  
+4. 启动集群的时候，某个节点kubelet起不来，RKE终端日志如下：  
 ERRO[0110] Failed to upgrade hosts: 16.187.191.58 with error [Failed to verify healthcheck: Failed to check http://localhost:10248/healthz for service [kubelet] on host [16.187.191.58]: Get "http://localhost:10248/healthz": Unable to access the service on localhost:10248. The service might be still starting up. Error: ssh: rejected: connect failed (Connection refused), log: + umount /var/lib/docker/devicemapper/mnt/68ff7c2f1246d1b0cce5ceb85696eab7b00f768a54c4f6e9696c2a5c1c6b65fb/rootfs/var/lib/kubelet/pods/09bf295d-0517-43b7-af04-8a578cdcc657/volume-subpaths/itsma-bmant-smartanalytics-volume/smarta-sawmeta-dih/0]  
 FATA[0110] [workerPlane] Failed to upgrade Worker Plane: [Failed to verify healthcheck: Failed to check http://localhost:10248/healthz for service [kubelet] on host [16.187.191.58]: Get "http://localhost:10248/healthz": Unable to access the service on localhost:10248. The service might be still starting up. Error: ssh: rejected: connect failed (Connection refused), log: + umount /var/lib/docker/devicemapper/mnt/68ff7c2f1246d1b0cce5ceb85696eab7b00f768a54c4f6e9696c2a5c1c6b65fb/rootfs/var/lib/kubelet/pods/09bf295d-0517-43b7-af04-8a578cdcc657/volume-subpaths/itsma-bmant-smartanalytics-volume/smarta-sawmeta-dih/0]  
 登录到失败的机器，运行"docker ps | grep kubelet"，如下：  
