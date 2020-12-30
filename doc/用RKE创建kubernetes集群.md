@@ -179,7 +179,7 @@ Kubernetes要求组件之间通过证书加密通讯。默认情况下，rke自�
 - kube-proxy  
 - kube-scheduler  
 - kube-controller-manager  
-另外，可以有以下3种证书更新方式：  
+另外，rke提供以下3种证书更新方式：  
 - 在原CA基础上更新所有K8S组件证书  
 - 在原CA基础上更新特定K8S组件证书  
 - 更新CA及所有K8S组件证书 
@@ -253,6 +253,43 @@ INFO[0052] Restarting network, ingress, and metrics pods
 ```
 
 ### 自定义证书安装  
+#### 生成CSR  
+rke非常贴心的提供了一键生成CSR的命令：`rke cert generate-csr`。 用真正的CA去给这些CSR文件签名后，就可以得到自定义的证书了。默认CSR文件生成在./cluster_certs目录下，安装的时候，可以通过--cert-dir指定自定义证书目录。  
+```
+$ rke cert generate-csr     
+INFO[0000] Generating Kubernetes cluster CSR certificates
+INFO[0000] [certificates] Generating Kubernetes API server csr
+INFO[0000] [certificates] Generating Kube Controller csr
+INFO[0000] [certificates] Generating Kube Scheduler csr
+INFO[0000] [certificates] Generating Kube Proxy csr     
+INFO[0001] [certificates] Generating Node csr and key   
+INFO[0001] [certificates] Generating admin csr and kubeconfig
+INFO[0001] [certificates] Generating Kubernetes API server proxy client csr
+INFO[0001] [certificates] Generating etcd-x.x.x.x csr and key
+INFO[0001] Successfully Deployed certificates at [./cluster_certs]
+```
+除了生成CSR，还要生成kube-service-account-token-key.pem，可以通过以下命令得到：  
+`$ openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout ./cluster_certs/kube-service-account-token-key.pem -out ./cluster_certs/kube-service-account-token.pem`
+
+#### 证书签名  
+1. 如果有现成的CA证书那么可以跳过这一步。如果没有，我们可以生成一个自签名CA证书：  
+```
+$cd cluster-certs
+$cn="CA on RKE-cluster"
+$openssl genrsa -out kube-ca.key 2048
+$openssl req -x509 -new -nodes -key ca.key -subj "/CN=${cn}" -days 3660 -out kube-ca.pem
+```
+2. 生成一个extfile文件，文件包含证书的SAN信息：  
+`echo "subjectAltName=IP:192.168.1.1,IP:127.0.0.1,IP:10.43.0.1" > extfile.cnf`
+注意：这里的SAN应该包含安装节点的IP,安装节点的loopback IP，集群DNS的IP
+3. 签名生成证书:  
+```
+names=("kube-admin" "kube-apiserver" "kube-apiserver-proxy-client" "kube-controller-manager" "kube-etcd-192-168-1-1" "kube-node" "kube-proxy" "kube-scheduler")
+for name in ${names[@]}; do
+openssl x509 -req -sha256 -in ${name}-csr.pem -CA kube-ca.pem -CAkey ca.key -CAcreateserial  -extfile extfile.cnf -out ${name}.pem -days 365
+```
+#### 自定义证书安装：  
+`rke up --config cluster.yml --custom-certs --cert-dir ./cluster-certs`
 
 ## RKE高级
 
