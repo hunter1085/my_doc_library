@@ -170,7 +170,90 @@ c84d2b1fa5cd        rancher/hyperkube:v1.19.5-rancher1     "/opt/rke-tools/entr�
 2. 重启机器  
 3. 删除/var/kubelet/下所有文件和目录  
 
-### 更新证书
+### 证书管理  
+#### 证书更新
+Kubernetes要求组件之间通过证书加密通讯。默认情况下，rke自动生成所有组件需要的证书。但是，为了防止证书过期，或者证书泄露，我们还是有必要在适当的时候更新证书。证书更新后，集群的相关组件将自动重启，这些组件包括：  
+- etcd  
+- kubelet  
+- kube-apiserver  
+- kube-proxy  
+- kube-scheduler  
+- kube-controller-manager  
+另外，可以有以下3种证书更新方式：  
+- 在原CA基础上更新所有K8S组件证书  
+- 在原CA基础上更新特定K8S组件证书  
+- 更新CA及所有K8S组件证书 
+注意：更新证书需要从cluster.yml中提取集群信息，所以，如果有必要记得使用"--config"选项。  
+##### 在原CA基础上更新所有K8S组件证书  
+`rke cert rotate`命令将在保留原有CA的基础上更新所有相关组件的证书，更新完成后，组件自动重启：  
+```
+$ rke cert rotate --config cluster-1x1.yml
+WARN[0000] This is not an officially supported version (v1.2.4-rc6) of RKE. Please download the latest official release at https://github.com/rancher/rke/releases
+INFO[0000] Running RKE version: v1.2.4-rc6
+INFO[0000] Initiating Kubernetes cluster
+INFO[0000] Rotating Kubernetes cluster certificates
+INFO[0000] [certificates] GenerateServingCertificate is disabled, checking if there are unused kubelet certificates
+INFO[0000] [certificates] Generating Kubernetes API server certificates
+INFO[0000] [certificates] Generating Kube Controller certificates
+INFO[0001] [certificates] Generating Kube Scheduler certificates
+INFO[0002] [certificates] Generating Kube Proxy certificates
+INFO[0002] [certificates] Generating Node certificate
+INFO[0002] [certificates] Generating admin certificates and kubeconfig
+INFO[0003] [certificates] Generating Kubernetes API server proxy client certificates
+INFO[0003] [certificates] Generating kube-etcd-16-187-190-95 certificate and key
+INFO[0004] Successfully Deployed state file at [./cluster-1x1.rkestate]
+INFO[0004] Rebuilding Kubernetes cluster with rotated certificates
+INFO[0004] [dialer] Setup tunnel for host [192.168.1.1]
+......
+INFO[0021] [worker] Successfully restarted Worker Plane..
+```
+##### 在原CA基础上更新特定K8S组件证书  
+`--service`选项可以指定待更新的组件。证书更新完成后，该组件将自动重启，比如下面代码将指定更新kubelet证书：  
+```
+$ rke cert rotate --service kubelet --config cluster-1x1.yml
+WARN[0000] This is not an officially supported version (v1.2.4-rc6) of RKE. Please download the latest official release at https://github.com/rancher/rke/releases
+INFO[0000] Running RKE version: v1.2.4-rc6
+INFO[0000] Initiating Kubernetes cluster
+INFO[0000] Rotating Kubernetes cluster certificates
+INFO[0000] [certificates] Generating Node certificate
+INFO[0000] Successfully Deployed state file at [./cluster-1x1.rkestate]
+INFO[0000] Rebuilding Kubernetes cluster with rotated certificates
+INFO[0000] [dialer] Setup tunnel for host [192.168.1.1]
+......
+INFO[0014] [restart/kube-proxy] Successfully restarted container on host [192.168.1.1]
+INFO[0014] [worker] Successfully restarted Worker Plane..
+```
+##### 更新CA及所有K8S组件证书  
+`--rotate-ca`选项强制更新CA证书。CA证书更新后，所有用到该CA的系统组件(包括K8S组件、网络组件等)的证书都将失效，这些证书也会被逐一更新，更新之后，组件将自动重启：  
+```
+$ rke cert rotate --rotate-ca --config cluster-1x1.yml
+WARN[0000] This is not an officially supported version (v1.2.4-rc6) of RKE. Please download the latest official release at https://github.com/rancher/rke/releases
+INFO[0000] Running RKE version: v1.2.4-rc6
+INFO[0000] Initiating Kubernetes cluster
+INFO[0000] Rotating Kubernetes cluster certificates
+INFO[0000] [certificates] Generating CA kubernetes certificates
+INFO[0000] [certificates] Generating Kubernetes API server aggregation layer requestheader client CA certificates
+INFO[0001] [certificates] GenerateServingCertificate is disabled, checking if there are unused kubelet certificates
+INFO[0001] [certificates] Generating Kubernetes API server certificates
+INFO[0001] [certificates] Generating Kube Controller certificates
+INFO[0002] [certificates] Generating Kube Scheduler certificates
+INFO[0002] [certificates] Generating Kube Proxy certificates
+INFO[0002] [certificates] Generating Node certificate
+INFO[0003] [certificates] Generating admin certificates and kubeconfig
+INFO[0003] [certificates] Generating Kubernetes API server proxy client certificates
+INFO[0004] [certificates] Generating kube-etcd-16-187-190-95 certificate and key
+INFO[0004] Successfully Deployed state file at [./cluster-1x1.rkestate]
+INFO[0004] Rebuilding Kubernetes cluster with rotated certificates
+INFO[0004] [dialer] Setup tunnel for host [192.168.1.1]
+......
+INFO[0052] Restarting container [kube-proxy] on host [192.168.1.1], try #1
+INFO[0052] [restart/kube-proxy] Successfully restarted container on host [192.168.1.1]
+INFO[0052] [worker] Successfully restarted Worker Plane..
+INFO[0052] Restarting network, ingress, and metrics pods
+```
+
+### 自定义证书安装  
+
 ## RKE高级
 
  
