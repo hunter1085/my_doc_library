@@ -291,6 +291,40 @@ openssl x509 -req -sha256 -in ${name}-csr.pem -CA kube-ca.pem -CAkey ca.key -CAc
 #### 自定义证书安装：  
 `rke up --config cluster.yml --custom-certs --cert-dir ./cluster-certs`
 
+### 集群升级  
+升级依然是通过运行`rke up`命令来完成，前提是需要编辑cluster.yml文件。  
+升级最关键的指标是系统下线时间(downtime)，因此组件的升级顺序和策略就显得至关重要，理想情况下，系统的downtime应该为0。以下是rke的默认更新策略:  
+- etcd plane(运行etcd的节点)，一次只升级一个节点；  
+- control plane(运行controlplane的节点)，一次只升级一个节点；如果control plane同时也是worker plan(运行worker的节点)，那么control plane上的k8s组件和worker组件一次只升级一个control plane上的实例;  
+- worker plane(运行worker的节点),如果同时运行了etcd，一次只升级一个节点;  
+- 非核心worker plane(不运行etcd和controlplane)，可以批量升级，批量的大小根据配置而定，默认情况下最大的不可用节点数量为集群节点10%(下取整)，最小值不能小于1；  
+- Addon(插件)，一次升级一个实例；  
+
+以上就是升级的基本策略，下面针对etcd节点、controlplane节点、worker节点和Addon分别说明：  
+
+#### etcd节点升级  
+- 集群的升级始于etcd节点；  
+- etcd节点的升级，一次只升级一个。任何时候，任何etcd节点升级出错，整个升级立即停止；  
+
+#### controlplane节点升级  
+- 默认一次升级一个节点，也可以批量升级。最大不可用节点数量可配置。升级过程中，只要当前不可用节点数小于最大不可用节点数，rke会马不停蹄地升级controlplane节点。但只要有任何一个controlplane节点升级失败，整个controlplane阶段的升级即认为失败，rke将停止后续升级；  
+
+#### worker节点升级  
+- 默认，worker节点以批量的方式升级；  
+- 定义在cluster.yml文件中的参数 "max_unavailable_worker" 用于控制批量升级中的最大不可用节点数。"max_unavailable_worker"既可以配置成百分比，也可以配置成正整数值，默认是10%。如果配置成百分比，批量的大小等于集群worker节点数乘以该百分比，并下取整，当然最小值不能小于1。比如，假设集群有11台worker节点，"max_unavailable_worker"设置为25%,那么每次批量升级的节点数为：  
+Size=round(11x0.25)=round(2.750)=2  
+- 批量升级过程中，只要当前不可用节点数小于最大不可用节点数，那么批量升级将持续升级后续的节点，直到所有节点都升级完成。  
+- 升级之前，rke会扫描集群内所有已经关机或网络不可达的节点，如果这些节点的数量已经大于等于最大不可用节点数，那么升级将立即停止。  
+- 节点在升级之前将被标记为不可调度(cordon)，升级完成后，重新被标记为可调度(uncordon)
+- 根据配置不同，节点在升级之前，可以驱赶该节点的所有pod到其他节点去(drain)。  
+- 升级Addon之前，rke一定会升级worker节点，但是升级Addon并不要求所有worker节点都成功升级，只要不可用节点数小于最大不可用节点数，Addon依然会被正常升级。  
+
+#### Addon升级  
+- 应用(application)的可用性(availability)部分取决于集群的Addon。 Addon用于部署集群组件，包括： 网络插件、ingress controller、DSN、metric server。由于Addon涉及到集群的网络流量和路由，批量升级Addon的过程中要仔细考虑Addon的最大不可用实例的大小，以确保整个集群的网络可用性；  
+
+### 灾备和恢复  
+
+
 ## RKE高级
 
  
