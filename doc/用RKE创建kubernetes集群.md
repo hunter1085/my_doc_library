@@ -612,4 +612,8 @@ FATA[0110] [workerPlane] Failed to upgrade Worker Plane: [Failed to verify healt
 日志很长一串，其中错误日志中可能有误导性，比如，kubelet报cni 网络插件找不到之类的(TO DO： add the log)  
 但其实原因可能是因为docker运行时还运行着很多container(包括已经退出的container)，以及/var/lib/kubelet目录下被container引用的文件引起的冲突。解决的办法就是把这些所有container清干净，然后重启系统。
 
+4. 运行`rke up` 之后，看到日志：  
+INFO[0417] [sync] Syncing nodes Labels and Taints  
+FATA[0579] [ "<node ip>" not found]  
+原因: 需要到相应的node上去看kubelet的日志，比如在我的环境里，由于节点时间严重落后于安装节点时间，导致该节点认为证书过期，从而加入节点失败
 
