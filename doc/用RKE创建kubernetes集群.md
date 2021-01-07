@@ -609,7 +609,14 @@ FATA[0110] [workerPlane] Failed to upgrade Worker Plane: [Failed to verify healt
 1f697eb6a724        rancher/hyperkube:v1.19.5-rancher1     "/opt/rke-tools/entr…"   12 minutes ago      Up 12 minutes                           kubelet
 ```
 然后，查看容器日志，运行: "docker logs -f 1f697eb6a724"  
-日志很长一串，其中错误日志中可能有误导性，比如，kubelet报cni 网络插件找不到之类的(TO DO： add the log)  
+日志很长一串，其中错误日志中可能有误导性，比如，kubelet报cni 网络插件找不到之类的，比如：
+```
+E0106 11:45:19.364965    6020 kubelet.go:2103] Container runtime network not ready: NetworkReady=false reason:NetworkPluginNotReady message:docker: network plugin is not ready: cni config uninitialized
+W0106 11:45:22.240829    6020 cni.go:239] Unable to update cni config: no networks found in /etc/cni/net.d
+E0106 11:45:24.366432    6020 kubelet.go:2103] Container runtime network not ready: NetworkReady=false reason:NetworkPluginNotReady message:docker: network plugin is not ready: cni config uninitialized
+W0106 11:45:27.241218    6020 cni.go:239] Unable to update cni config: no networks found in /etc/cni/net.d
+
+```
 但其实原因可能是因为docker运行时还运行着很多container(包括已经退出的container)，以及/var/lib/kubelet目录下被container引用的文件引起的冲突。解决的办法就是把这些所有container清干净，然后重启系统。
 
 4. 运行`rke up` 之后，看到日志：  
