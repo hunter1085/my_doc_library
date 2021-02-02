@@ -4,4 +4,4 @@
 - [GNU sed 中文手册](/doc/sed中文手册.md)
 
 ## ※ 看得懂系列
-- [用RKE创建kubernetes集群](/doc/用RKE创建kubernetes集群.md)
+- [用RKE创建kubernetes集群](doc/Rancer之RKE)
